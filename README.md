@@ -12,6 +12,19 @@ pip install -r requirements.txt
 cp .env.example .env   # then fill in the seed and data paths
 ```
 
+## Smoke test
+
+Run a few MLM steps and both probe paths on tiny synthetic data, to check the setup end to end:
+
+```bash
+./smoke_test.sh          # id 0 (tiny-random-bert)
+./smoke_test.sh 0 2 7    # any ids in berts.yml
+```
+
+Missing models are fetched with `scripts/download_berts.sh` into `$HF_HOME/hub` (`~/.cache/huggingface/hub` when unset); run it alone to pre-download every model.
+The data and `.env.smoke` come from `scripts/make_smoke_test.py` on the first run; `.env` is never touched.
+Output goes to `runs/<bert>/smoke-test-<yymmddHHMMSS>/`, ending with a PASS/FAIL line per model.
+
 ## Usage
 
 Encoders are picked by `id` from `berts.yml`. Every script lists its options with `--help`.

@@ -1,0 +1,23 @@
+# env: keep only the template
+.env
+.env.*
+!.env.example
+
+# training outputs and generated data
+runs/
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# Claude Code local state
+.claude/settings.local.json
+.claude/*.lock
+
+# OS / editor
+.DS_Store
+._*
+Thumbs.db
+.vscode/

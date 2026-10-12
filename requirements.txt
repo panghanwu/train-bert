@@ -1,16 +1,20 @@
-# Unpinned for now. Tested with:
+# Python >= 3.10. Only versions the code depends on are bounded; the rest is unpinned. Tested with:
 # torch 2.14.1, transformers 5.18.0, datasets 5.0.1, accelerate 1.15.0, tyro 1.0.16, loguru 0.7.3,
 # python-dotenv 1.2.2, pyyaml 6.0.3, scikit-learn 1.8.0, numpy 2.4.4, pandas 3.0.2, pyarrow 25.0.1, matplotlib 3.10.9
+# torch 2.12.0, transformers 5.9.0, datasets 4.8.5, accelerate 1.13.0, tyro 1.0.15, huggingface_hub 1.17.0,
+# scikit-learn 1.9.0, pandas 2.3.3, pyarrow 24.0.0 (aarch64, GB10)
 torch
-transformers>=5
+transformers>=5.9  # EuroBERT and ModernBERT built in, no trust_remote_code
+huggingface_hub[cli]>=1.17  # hf CLI for scripts/download_berts.sh: models info --expand, download --dry-run
 datasets
 accelerate
 tyro
 loguru
 python-dotenv
 pyyaml
-scikit-learn>=1.4
+scikit-learn>=1.4  # metrics.root_mean_squared_error
 numpy
 pandas
 pyarrow
 matplotlib
+tqdm
