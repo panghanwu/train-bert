@@ -1,0 +1,16 @@
+# Unpinned for now. Tested with:
+# torch 2.14.1, transformers 5.18.0, datasets 5.0.1, accelerate 1.15.0, tyro 1.0.16, loguru 0.7.3,
+# python-dotenv 1.2.2, pyyaml 6.0.3, scikit-learn 1.8.0, numpy 2.4.4, pandas 3.0.2, pyarrow 25.0.1, matplotlib 3.10.9
+torch
+transformers>=5
+datasets
+accelerate
+tyro
+loguru
+python-dotenv
+pyyaml
+scikit-learn>=1.4
+numpy
+pandas
+pyarrow
+matplotlib

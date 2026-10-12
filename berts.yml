@@ -1,0 +1,51 @@
+- id: 0
+  name: tiny-random-bert
+  hf_id: hf-internal-testing/tiny-random-BertForMaskedLM
+  description: 'Random-weight tiny BERT from the transformers CI; for local pipeline tests only'
+
+- id: 1
+  name: biomedbert-base
+  hf_id: microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract-fulltext
+  description: 'Microsoft BERT-base trained from scratch on PubMed abstracts and PMC full text; English; 512 ctx; 110M'
+
+- id: 2
+  name: ckip-bert-base
+  hf_id: ckiplab/bert-base-chinese
+  tokenizer_id: bert-base-chinese
+  description: 'CKIP Lab (Academia Sinica) BERT-base for Traditional Chinese; 512 ctx; ~102M'
+
+- id: 3
+  name: mmbert-small
+  hf_id: jhu-clsp/mmBERT-small
+  description: 'JHU CLSP ModernBERT-style multilingual encoder, 1800+ languages; Gemma 2 tokenizer; 8192 ctx; 140M (42M non-embedding)'
+
+- id: 4
+  name: mmbert-base
+  hf_id: jhu-clsp/mmBERT-base
+  description: 'JHU CLSP ModernBERT-style multilingual encoder, 1800+ languages; Gemma 2 tokenizer; 8192 ctx; 307M (110M non-embedding)'
+
+- id: 5
+  name: bioclinical-modernbert-base
+  hf_id: thomas-sounack/BioClinical-ModernBERT-base
+  description: 'ModernBERT continued-pretrained on PubMed/PMC and 20 clinical datasets (Dana-Farber et al.); English; 8192 ctx; 150M'
+
+- id: 6
+  name: bioclinical-modernbert-large
+  hf_id: thomas-sounack/BioClinical-ModernBERT-large
+  description: 'ModernBERT continued-pretrained on PubMed/PMC and 20 clinical datasets (Dana-Farber et al.); English; 8192 ctx; 396M'
+
+- id: 7
+  name: eurobert-210m
+  hf_id: EuroBERT/EuroBERT-210m
+  description: 'European multilingual encoder, 15 languages incl. Chinese; Llama 3 tokenizer; 8192 ctx; 210M'
+
+- id: 8
+  name: eurobert-610m
+  hf_id: EuroBERT/EuroBERT-610m
+  description: 'European multilingual encoder, 15 languages incl. Chinese; Llama 3 tokenizer; 8192 ctx; 610M'
+
+- id: 9
+  name: eurobert-2.1b
+  hf_id: EuroBERT/EuroBERT-2.1B
+  description: 'European multilingual encoder, 15 languages incl. Chinese; Llama 3 tokenizer; 8192 ctx; 2.1B'
+  
