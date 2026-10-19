@@ -6,6 +6,7 @@
 # training outputs and generated data
 runs/
 data/
+*.log
 
 # Python
 __pycache__/

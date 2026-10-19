@@ -26,7 +26,6 @@ from dotenv import load_dotenv
 from loguru import logger
 from matplotlib.figure import Figure
 from torch.utils.data import DataLoader
-from tqdm.auto import tqdm
 from transformers import AutoModelForMaskedLM, AutoTokenizer, DataCollatorForLanguageModeling, get_scheduler
 
 from common import load_bert
@@ -200,9 +199,10 @@ def plot_history():
 
 # train
 model.train()
-step, running, best_loss = 0, [], math.inf
+step, running, best_loss, start_time = 0, [], math.inf, time.time()
 for epoch in range(args.num_epochs):
-    for batch in tqdm(train_dl, desc=f'epoch {epoch}', disable=not accelerator.is_main_process):
+    logger.info(f'Epoch {epoch + 1}/{args.num_epochs} starts, {steps_per_epoch} optimizer steps')
+    for batch in train_dl:
         with accelerator.accumulate(model):
             loss = model(**batch).loss
             accelerator.backward(loss)
@@ -223,6 +223,8 @@ for epoch in range(args.num_epochs):
                 'train/loss': torch.stack(running).mean().item(),
                 'train/lr': scheduler.get_last_lr()[0],
                 'train/grad_norm': grad_norm.item(),
+                'time/elapsed_min': (time.time() - start_time) / 60,
+                'time/eta_min': (time.time() - start_time) / step * (max_steps - step) / 60,
             })
             running.clear()
 
@@ -243,6 +245,11 @@ for epoch in range(args.num_epochs):
                     save_best(record)
             if accelerator.is_main_process:
                 plot_history()
+
+    logger.info(
+        f'Epoch {epoch + 1}/{args.num_epochs} done at step {step}, '
+        f'{(time.time() - start_time) / 60:.1f} min so far, best eval/loss={best_loss:.4f}'
+    )
 
 accelerator.wait_for_everyone()
 logger.info(f'Best eval/loss={best_loss:.4f}, checkpoint in {best_dir}')

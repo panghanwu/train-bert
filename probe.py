@@ -21,6 +21,7 @@ import pyarrow.parquet as pq
 import torch
 import torch.nn.functional as F
 from loguru import logger
+from scipy.special import expit
 from sklearn import metrics as skm
 from transformers import AutoModel, AutoTokenizer
 
@@ -77,11 +78,14 @@ def to_float(column: pa.ChunkedArray) -> np.ndarray:
 # features
 
 @torch.no_grad()
-def extract(encoder, tokenizer, texts, cfg: ProbeConfig, device):
+def extract(encoder, tokenizer, texts, cfg: ProbeConfig, device, desc='features'):
+    """Pooled features in the order of texts. Batches hold texts of similar length, so little compute goes to padding."""
+    order = sorted(range(len(texts)), key=lambda i: len(texts[i]))  # character length as a cheap proxy for tokens
+    total_chars, done_chars, last_log, start = sum(map(len, texts)), 0, 0.0, time.time()
     feats = []
-    for i in range(0, len(texts), cfg.batch_size):
+    for i in range(0, len(order), cfg.batch_size):
         enc = tokenizer(
-            texts[i:i + cfg.batch_size],
+            [texts[j] for j in order[i:i + cfg.batch_size]],
             padding=True,
             truncation=True,
             max_length=cfg.max_seq_length,
@@ -93,7 +97,13 @@ def extract(encoder, tokenizer, texts, cfg: ProbeConfig, device):
             feats.append((h * mask).sum(1) / mask.sum(1))
         else:
             feats.append(h[:, 0])  # assumes right padding
-    return torch.cat(feats).float()
+        done_chars += sum(len(texts[j]) for j in order[i:i + cfg.batch_size])
+        progress = done_chars / max(total_chars, 1)  # by characters: batches get longer as they go
+        if progress - last_log >= 0.1 or i + cfg.batch_size >= len(order):
+            last_log, elapsed = progress, (time.time() - start) / 60
+            logger.info(f'{desc}: {progress:.0%}, {elapsed:.1f} min, eta {elapsed / progress * (1 - progress):.1f} min')
+    feats = torch.cat(feats).float()
+    return feats[torch.argsort(torch.tensor(order, device=feats.device))]  # back to the order of texts
 
 
 # linear head
@@ -142,7 +152,7 @@ def column_metrics(task, out, target):
     keep = ~np.isnan(target)
     out, target = out[keep], target[keep]
     if task.type == 'binary':
-        prob = 1 / (1 + np.exp(-out[:, 0]))
+        prob = expit(out[:, 0])  # logistic sigmoid without overflow warnings
         two_classes = len(np.unique(target)) == 2  # AUROC/AUPRC undefined otherwise
         return {
             'auroc': skm.roc_auc_score(target, prob) if two_classes else np.nan,
@@ -175,14 +185,14 @@ def write_summary(df: pd.DataFrame, skipped: dict, path: Path, title: str):
 
 
 # entry point for train_mlm.py and the CLI
-
 def run_probe(model, train_file, eval_file, out_dir, cfg: ProbeConfig, *, text_column='text', tokenizer=None, seed=0, device=None):
     """Probe every label column; returns the metrics table, or None if no column can be probed."""
-    tables = {}
+    tables, kept = {}, {}
     for split, file in (('train', train_file), ('eval', eval_file)):
         table = pq.read_table(file)
         texts = table[text_column].to_pylist()
-        tables[split] = table.take([i for i, t in enumerate(texts) if t and t.strip()])  # drop empty documents
+        kept[split] = [i for i, t in enumerate(texts) if t and t.strip()]  # drop empty documents
+        tables[split] = table.take(kept[split])
     tasks, skipped = find_tasks(tables['train'], tables['eval'], text_column)
 
     # labels as float arrays, null -> nan; hold out part of train to choose lambda
@@ -208,7 +218,8 @@ def run_probe(model, train_file, eval_file, out_dir, cfg: ProbeConfig, *, text_c
     tokenizer = AutoTokenizer.from_pretrained(tokenizer or model)
     tokenizer.padding_side = 'right'
     encoder = AutoModel.from_pretrained(model).to(device).eval()
-    x = {s: extract(encoder, tokenizer, table[text_column].to_pylist(), cfg, device) for s, table in tables.items()}
+    logger.info(f'Extracting features with {model} on {device}: ' + ', '.join(f'{s}={t.num_rows:,}' for s, t in tables.items()))
+    x = {s: extract(encoder, tokenizer, table[text_column].to_pylist(), cfg, device, desc=s) for s, table in tables.items()}
     del encoder
     x_mean, x_std = x['train'].mean(0), x['train'].std(0) + 1e-6
     x = {s: (v - x_mean) / x_std for s, v in x.items()}
@@ -231,21 +242,31 @@ def run_probe(model, train_file, eval_file, out_dir, cfg: ProbeConfig, *, text_c
     (x_fit, y_fit), (x_val, y_val) = subset(fit_idx), subset(val_idx)
     grid = sorted(cfg.lambdas, reverse=True)
     val_losses, head = [], None
+    logger.info(f'Choosing lambda per column on {len(val_idx):,} held-out train rows: {grid}')
     for lam in grid:
         head = fit_head(x_fit, y_fit, tasks, [lam] * len(tasks), cfg.max_iter, init=head)
         with torch.no_grad():
             val_losses.append([loss.item() for loss in task_losses(head(x_val), y_val, tasks)])
+        logger.info(f'lambda={lam:g}: mean val loss {np.mean(val_losses[-1]):.4f}')
     best = [grid[i] for i in np.argmin(val_losses, axis=0)]
 
     # refit on all of train, then evaluate on the original target scale
+    logger.info('Refitting on all of train')
     head = fit_head(x['train'], yt['train'], tasks, best, cfg.max_iter)
     with torch.no_grad():
         out = head(x['eval']).cpu().numpy()
     rows, start = [], 0
+    preds = {'row': np.asarray(kept['eval'])}  # row in the eval file, to join back to it (e.g. for visit ids)
     for task, lam in zip(tasks, best):
         mean, std = y_scale[task.column]
         task_out = out[:, start:start + task.num_outputs] * std + mean
         start += task.num_outputs
+        preds[task.column] = y['eval'][task.column]
+        preds[f'{task.column}_pred'] = (  # probability, class, or value
+            expit(task_out[:, 0]) if task.type == 'binary'
+            else task_out.argmax(1) if task.type == 'multiclass'
+            else task_out[:, 0]
+        )
         counts = {
             'lambda': lam,
             'n_train': int((~np.isnan(y['train'][task.column])).sum()),
@@ -256,10 +277,11 @@ def run_probe(model, train_file, eval_file, out_dir, cfg: ProbeConfig, *, text_c
             rows.append({'column': task.column, 'type': task.type, 'metric': metric, 'value': value, **counts})
     df = pd.DataFrame(rows)
 
-    # save metrics, summary, and the head folded back to raw pooled features and the original target scale
+    # save metrics, eval predictions, summary, and the head folded back to raw pooled features and the original target scale
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     df.to_csv(out_dir / 'metrics.csv', index=False)
+    pd.DataFrame(preds).to_parquet(out_dir / 'predictions.parquet', index=False)  # for bootstrap intervals later
     write_summary(df, skipped, out_dir / 'summary.md', f'Linear probe: {model}')
     weight = (head.weight / x_std).detach()
     bias = (head.bias - weight @ x_mean).detach()
